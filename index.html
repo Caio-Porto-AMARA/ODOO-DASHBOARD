@@ -1578,7 +1578,7 @@ function renderAlertasView(fd){
   const now = new Date(); now.setHours(0,0,0,0);
   const comData = fd.filter(d=>d.fechamentoEsperado && d.estagio!=='Conquistado' && !curExitStages().includes(d.estagio));
   const dateSort = (a,b)=>parseISO(a.fechamentoEsperado)-parseISO(b.fechamentoEsperado);
-  const alertaSortAccessors = { valor: d=>d.valor, kwp: d=>d.kwp||0, probabilidade: d=>d.probabilidade };
+  const alertaSortAccessors = { valor: d=>d.valor, kwp: d=>d.kwp||0, probabilidade: d=>d.probabilidade, dias: d=>parseISO(d.fechamentoEsperado).getTime() };
   const sortFn = ALERTA_SORT_KEY
     ? (a,b)=> ALERTA_SORT_DIR==='asc'
       ? alertaSortAccessors[ALERTA_SORT_KEY](a)-alertaSortAccessors[ALERTA_SORT_KEY](b)
@@ -1602,7 +1602,7 @@ function renderAlertasView(fd){
           <th style="width:70px;" onclick="toggleAlertaSort('probabilidade')" title="Ordenar por probabilidade">% ${sortArrow('probabilidade')}${rzHandle}</th>
           <th style="width:110px;">Mês${rzHandle}</th>
           <th style="width:140px;">Status${rzHandle}</th>
-          <th style="width:130px;">Dias restantes</th>
+          <th style="width:130px;" onclick="toggleAlertaSort('dias')" title="Ordenar por dias restantes">Dias restantes ${sortArrow('dias')}</th>
         </tr></thead>
         <tbody>
           ${rows.map(d=>{
