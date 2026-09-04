@@ -313,6 +313,10 @@ thead th{
 }
 thead th:hover{background:var(--green-100);}
 thead th .sort-arrow{opacity:0.5; margin-left:3px; font-size:9px;}
+.col-resize-handle{
+  position:absolute; top:0; right:0; width:6px; height:100%; cursor:col-resize; z-index:2;
+}
+.col-resize-handle:hover, .col-resize-handle.resizing{ background:rgba(50,146,68,0.35); }
 .alerta-table thead th{background:var(--green-500); color:#fff; text-align:center; cursor:default;}
 .alerta-table thead th:hover{background:var(--green-500);}
 .alerta-table tbody td{text-align:center;}
@@ -456,6 +460,7 @@ const ICONS = {
 
 </script>
 <script>
+
 
 
 
@@ -933,11 +938,38 @@ function openModal(title, bodyHtml){
   document.getElementById('modalTitle').innerHTML = title;
   document.getElementById('modalBody').innerHTML = bodyHtml;
   document.getElementById('modalOverlay').classList.add('open');
+  makeColumnsResizable(document.getElementById('modalBody'));
 }
 
 /* =====================================================================
    Tabela reutilizável de oportunidades (usada em modais)
    ===================================================================== */
+let __tableRegistry = {};
+let __tableIdCounter = 0;
+
+function opportunityRowsHtml(rows, opts={}){
+  const showMotivo = opts.showMotivo;
+  const showDias = opts.showDias;
+  return rows.map(r=>{
+    let diasCell = '';
+    if (showDias){
+      const dt = r.fechamentoEsperado ? parseISO(r.fechamentoEsperado) : null;
+      const dias = dt ? daysBetween(new Date(), dt) : null;
+      diasCell = `<td>${dias===null?'—':(dias<0?`<span class="badge badge-red">${Math.abs(dias)}d atrasado</span>`:dias<=3?`<span class="badge badge-amber">${dias}d</span>`:dias+'d')}</td>`;
+    }
+    return `<tr data-id="${r.id}" class="opp-row" style="cursor:pointer">
+      <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.oportunidade)}${operacaoBadge(r.operacao)}</td>
+      <td>${escapeHtml(r.empresa)}</td>
+      <td>${escapeHtml(r.vendedor)}</td>
+      <td><span class="badge" style="background:${stageColorAny(r.estagio)}22; color:${stageColorAny(r.estagio)}">${r.estagio}</span></td>
+      ${opts.showProbabilidade?`<td class="mono-num">${fmtPct(r.probabilidade)}</td>`:''}
+      <td class="mono-num">${fmtMoneyFull(r.valor)}</td>
+      ${showMotivo?`<td>${escapeHtml(r.motivoPerda||'Motivo não informado')}</td>`:''}
+      ${diasCell}
+    </tr>`;
+  }).join('');
+}
+
 function opportunityTableHtml(rows, opts={}){
   if (!rows.length){
     return `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade encontrada para este filtro.</p></div>`;
@@ -945,33 +977,17 @@ function opportunityTableHtml(rows, opts={}){
   const showMotivo = opts.showMotivo;
   const showDias = opts.showDias;
   const showProb = opts.showProbabilidade;
+  const tid = 'opptbl-' + (__tableIdCounter++);
+  __tableRegistry[tid] = { rows: [...rows], opts, sortKey: null, sortDir: -1 };
+  const heightStyle = opts.modal ? 'max-height:56vh; overflow:auto;' : '';
   return `
-    <div class="table-wrap" style="border:none; border-radius:0;">
+    <div class="table-wrap" data-tid="${tid}" style="border:none; border-radius:0; ${heightStyle}">
       <table>
         <thead><tr>
           <th>Oportunidade</th><th>Empresa</th><th>Vendedor</th><th>Estágio</th>
-          ${showProb?'<th>Probabilidade</th>':''}<th>Valor</th>${showMotivo?'<th>Motivo da perda</th>':''}${showDias?'<th>Dias restantes</th>':''}
+          ${showProb?'<th data-sort="probabilidade">Probabilidade</th>':''}<th data-sort="valor">Valor</th>${showMotivo?'<th>Motivo da perda</th>':''}${showDias?'<th>Dias restantes</th>':''}
         </tr></thead>
-        <tbody>
-          ${rows.map(r=>{
-            let diasCell = '';
-            if (showDias){
-              const dt = r.fechamentoEsperado ? parseISO(r.fechamentoEsperado) : null;
-              const dias = dt ? daysBetween(new Date(), dt) : null;
-              diasCell = `<td>${dias===null?'—':(dias<0?`<span class="badge badge-red">${Math.abs(dias)}d atrasado</span>`:dias<=3?`<span class="badge badge-amber">${dias}d</span>`:dias+'d')}</td>`;
-            }
-            return `<tr data-id="${r.id}" class="opp-row" style="cursor:pointer">
-              <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.oportunidade)}${operacaoBadge(r.operacao)}</td>
-              <td>${escapeHtml(r.empresa)}</td>
-              <td>${escapeHtml(r.vendedor)}</td>
-              <td><span class="badge" style="background:${stageColorAny(r.estagio)}22; color:${stageColorAny(r.estagio)}">${r.estagio}</span></td>
-              ${showProb?`<td class="mono-num">${fmtPct(r.probabilidade)}</td>`:''}
-              <td class="mono-num">${fmtMoneyFull(r.valor)}</td>
-              ${showMotivo?`<td>${escapeHtml(r.motivoPerda||'Motivo não informado')}</td>`:''}
-              ${diasCell}
-            </tr>`;
-          }).join('')}
-        </tbody>
+        <tbody>${opportunityRowsHtml(rows, opts)}</tbody>
       </table>
     </div>`;
 }
@@ -979,6 +995,71 @@ function opportunityTableHtml(rows, opts={}){
 function wireOppRowClicks(container){
   container.querySelectorAll('.opp-row').forEach(el=>{
     el.addEventListener('click', ()=> openOpportunityModal(parseInt(el.dataset.id)));
+  });
+  makeColumnsResizable(container);
+}
+
+function wireOpportunityTableSort(container){
+  wireSortableHeaders(container, (wrap, rows, opts)=>{
+    const tbody = wrap.querySelector('tbody');
+    tbody.innerHTML = opportunityRowsHtml(rows, opts);
+    wireOppRowClicks(wrap);
+  });
+}
+
+/* ---------------- Ordenação genérica de cabeçalho (clique em <th data-sort>) ---------------- */
+function wireSortableHeaders(container, onSorted){
+  container.querySelectorAll('[data-tid] thead th[data-sort]').forEach(th=>{
+    if (th.dataset.wired) return;
+    th.dataset.wired = '1';
+    th.style.cursor = 'pointer';
+    if (!th.querySelector('.sort-arrow')) th.insertAdjacentHTML('beforeend', ' <span class="sort-arrow">↕</span>');
+    th.addEventListener('click', (e)=>{
+      if (e.target.classList.contains('col-resize-handle')) return;
+      const wrap = th.closest('[data-tid]');
+      const tid = wrap.dataset.tid;
+      const state = __tableRegistry[tid];
+      if (!state) return;
+      const key = th.dataset.sort;
+      state.sortDir = (state.sortKey === key) ? state.sortDir*-1 : -1;
+      state.sortKey = key;
+      state.rows.sort((a,b)=> ((a[key]||0)-(b[key]||0)) * state.sortDir);
+      wrap.querySelectorAll('thead th[data-sort] .sort-arrow').forEach(a=>a.textContent='↕');
+      th.querySelector('.sort-arrow').textContent = state.sortDir===1 ? '▲' : '▼';
+      onSorted(wrap, state.rows, state.opts);
+      makeColumnsResizable(wrap);
+    });
+  });
+}
+
+/* ---------------- Colunas redimensionáveis (arrastar borda do cabeçalho) ---------------- */
+function makeColumnsResizable(container){
+  container.querySelectorAll('table').forEach(table=>{
+    if (table.dataset.resizable) return;
+    table.dataset.resizable = '1';
+    table.style.tableLayout = 'fixed';
+    table.querySelectorAll('thead th').forEach(th=>{
+      th.style.position = 'relative';
+      th.style.overflow = 'hidden';
+      if (!th.style.width) th.style.width = th.offsetWidth + 'px';
+      const handle = document.createElement('span');
+      handle.className = 'col-resize-handle';
+      th.appendChild(handle);
+      handle.addEventListener('click', e=> e.stopPropagation());
+      handle.addEventListener('mousedown', e=>{
+        e.preventDefault(); e.stopPropagation();
+        const startX = e.pageX, startWidth = th.offsetWidth;
+        handle.classList.add('resizing');
+        const onMove = e2=>{ th.style.width = Math.max(60, startWidth + (e2.pageX-startX)) + 'px'; };
+        const onUp = ()=>{
+          handle.classList.remove('resizing');
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
   });
 }
 
@@ -1148,8 +1229,9 @@ function wireFunnelClicks(container, fd){
       const stage = el.dataset.stage;
       const rows = fd.filter(d=>d.estagio===stage);
       openModal(`${ICONS.funnel.replace('<svg','<svg width="16" height="16"')} Oportunidades em "${stage}" <span style="color:var(--gray-500); font-weight:600; font-size:12px;">(${rows.length})</span>`,
-        opportunityTableHtml(rows));
+        opportunityTableHtml(rows, {modal:true}));
       wireOppRowClicks(document.getElementById('modalBody'));
+      wireOpportunityTableSort(document.getElementById('modalBody'));
     });
   });
 }
@@ -1259,6 +1341,7 @@ function renderOverview(fd){
   });
   document.getElementById('criticasTable').innerHTML = opportunityTableHtml(criticas);
   wireOppRowClicks(document.getElementById('criticasTable'));
+  wireOpportunityTableSort(document.getElementById('criticasTable'));
 
   // Chart: oportunidades por estágio do funil, com receita esperada como rótulo
   const funnelStagesForChart = curFunnelStages();
@@ -1295,6 +1378,7 @@ function renderOverview(fd){
     options: { ...baseBarOptions(), layout:{ padding:{ top:22 } } },
     plugins:[verticalBarValueLabelPlugin],
   });
+  makeColumnsResizable(vc);
 }
 
 // Plugin genérico: escreve a quantidade acima de cada barra em gráficos verticais
@@ -1437,8 +1521,9 @@ function renderFunilView(fd){
   vc.querySelectorAll('.stage-row').forEach(el=>{
     el.addEventListener('click', ()=>{
       const rows = fd.filter(d=>d.estagio===el.dataset.stage);
-      openModal(`Oportunidades em "${el.dataset.stage}"`, opportunityTableHtml(rows));
+      openModal(`Oportunidades em "${el.dataset.stage}"`, opportunityTableHtml(rows, {modal:true}));
       wireOppRowClicks(document.getElementById('modalBody'));
+      wireOpportunityTableSort(document.getElementById('modalBody'));
     });
   });
   vc.querySelectorAll('.prob-row').forEach(el=>{
@@ -1473,6 +1558,7 @@ function renderFunilView(fd){
       plugins:[kwpValueLabelPlugin],
     });
   }
+  makeColumnsResizable(vc);
 }
 
 function openKwpPorMesModal(title, rows){
@@ -1606,8 +1692,9 @@ function wireVendorRowClicks(container, byVend){
   container.querySelectorAll('.vend-row').forEach(el=>{
     el.addEventListener('click', ()=>{
       const items = byVend[el.dataset.v];
-      openModal(`Propostas de ${escapeHtml(el.dataset.v)}`, opportunityTableHtml(items));
+      openModal(`Propostas de ${escapeHtml(el.dataset.v)}`, opportunityTableHtml(items, {modal:true}));
       wireOppRowClicks(document.getElementById('modalBody'));
+      wireOpportunityTableSort(document.getElementById('modalBody'));
     });
   });
 }
@@ -1660,8 +1747,9 @@ function wireEmpresaRowClicks(container, fd){
   container.querySelectorAll('.emp-row').forEach(el=>{
     el.addEventListener('click', ()=>{
       const rows = fd.filter(d=>d.empresa===el.dataset.e);
-      openModal(`Propostas de ${escapeHtml(el.dataset.e)}`, opportunityTableHtml(rows));
+      openModal(`Propostas de ${escapeHtml(el.dataset.e)}`, opportunityTableHtml(rows, {modal:true}));
       wireOppRowClicks(document.getElementById('modalBody'));
+      wireOpportunityTableSort(document.getElementById('modalBody'));
     });
   });
 }
@@ -1706,6 +1794,7 @@ function renderPerdasView(fd){
   `;
   document.getElementById('perdasTable').innerHTML = opportunityTableHtml(perdidas, {showMotivo:true, showProbabilidade:true});
   wireOppRowClicks(document.getElementById('perdasTable'));
+  wireOpportunityTableSort(document.getElementById('perdasTable'));
 
   if (!motivos.length) return;
 
@@ -1736,6 +1825,7 @@ function renderPerdasView(fd){
       scales:{ x:{ grid:{color:'#EEF2F0'}, ticks:{precision:0}, suggestedMax: Math.max(...motivos.map(m=>m[1]))*1.25 }, y:{ grid:{display:false}, ticks:{font:{size:11.5, weight:'600'}} } } },
     plugins:[barValueLabelPlugin],
   });
+  makeColumnsResizable(vc);
 }
 
 /* =====================================================================
@@ -1752,27 +1842,33 @@ function renderAlertasView(fd){
 
   const monthOnly = (iso) => { const s = parseISO(iso).toLocaleDateString('pt-BR',{month:'long'}); return s.charAt(0).toUpperCase()+s.slice(1); };
 
-  const rowsTable = (rows, opts={}) => rows.length ? `
-    <div class="table-wrap" style="border:none;">
+  const alertaRowsHtml = (rows) => rows.map(d=>{
+    const dias = daysBetween(now, parseISO(d.fechamentoEsperado));
+    const cls = dias<0 ? 'row-overdue' : (dias<=3 ? 'row-soon' : '');
+    const diasTxt = dias<0 ? `${Math.abs(dias)}d atrasado` : `${dias}d restantes`;
+    return `<tr class="opp-row ${cls}" data-id="${d.id}" style="cursor:pointer;">
+      <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(d.empresa)}${operacaoBadge(d.operacao)}</td>
+      <td class="mono-num">${d.kwp ? fmtNum(d.kwp) : '—'}</td>
+      <td class="mono-num">${fmtMoneyFull(d.valor)}</td>
+      <td class="mono-num">${Math.round(d.probabilidade)}</td>
+      <td style="text-transform:uppercase;">${monthOnly(d.fechamentoEsperado)}</td>
+      <td><span class="badge" style="background:${stageColorAny(d.estagio)}22; color:${stageColorAny(d.estagio)}">${d.estagio}</span></td>
+      <td><span class="badge ${dias<0?'badge-red':dias<=3?'badge-amber':'badge-gray'}">${diasTxt}</span></td>
+    </tr>`;
+  }).join('');
+
+  const rowsTable = (rows, opts={}) => {
+    if (!rows.length) return `<div class="empty-state">${ICONS.bell}<p>${opts.emptyMsg||'Nenhuma proposta encontrada para os filtros atuais.'}</p></div>`;
+    const tid = 'alerttbl-' + (__tableIdCounter++);
+    __tableRegistry[tid] = { rows:[...rows], opts:{}, sortKey:null, sortDir:-1 };
+    return `
+    <div class="table-wrap" data-tid="${tid}" style="border:none;">
       <table class="alerta-table">
-        <thead><tr><th>Clientes</th><th>KWp</th><th>%</th><th>Mês</th><th>Status</th><th>Dias restantes</th></tr></thead>
-        <tbody>
-          ${rows.map(d=>{
-            const dias = daysBetween(now, parseISO(d.fechamentoEsperado));
-            const cls = dias<0 ? 'row-overdue' : (dias<=3 ? 'row-soon' : '');
-            const diasTxt = dias<0 ? `${Math.abs(dias)}d atrasado` : `${dias}d restantes`;
-            return `<tr class="opp-row ${cls}" data-id="${d.id}" style="cursor:pointer;">
-              <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(d.empresa)}${operacaoBadge(d.operacao)}</td>
-              <td class="mono-num">${d.kwp ? fmtNum(d.kwp) : '—'}</td>
-              <td class="mono-num">${Math.round(d.probabilidade)}</td>
-              <td style="text-transform:uppercase;">${monthOnly(d.fechamentoEsperado)}</td>
-              <td><span class="badge" style="background:${stageColorAny(d.estagio)}22; color:${stageColorAny(d.estagio)}">${d.estagio}</span></td>
-              <td><span class="badge ${dias<0?'badge-red':dias<=3?'badge-amber':'badge-gray'}">${diasTxt}</span></td>
-            </tr>`;
-          }).join('')}
-        </tbody>
+        <thead><tr><th>Clientes</th><th data-sort="kwp">KWp</th><th data-sort="valor">Valor</th><th data-sort="probabilidade">%</th><th>Mês</th><th>Status</th><th>Dias restantes</th></tr></thead>
+        <tbody>${alertaRowsHtml(rows)}</tbody>
       </table>
-    </div>` : `<div class="empty-state">${ICONS.bell}<p>${opts.emptyMsg||'Nenhuma proposta encontrada para os filtros atuais.'}</p></div>`;
+    </div>`;
+  };
 
   const vc = document.getElementById('viewContainer');
   vc.innerHTML = `
@@ -1798,6 +1894,11 @@ function renderAlertasView(fd){
     </div>
   `;
   wireOppRowClicks(vc);
+  wireSortableHeaders(vc, (wrap, rows)=>{
+    wrap.querySelector('tbody').innerHTML = alertaRowsHtml(rows);
+    wireOppRowClicks(wrap);
+  });
+  makeColumnsResizable(vc);
 }
 
 /* =====================================================================
@@ -2041,6 +2142,7 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
