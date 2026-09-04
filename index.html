@@ -472,6 +472,8 @@ const ICONS = {
 
 
 
+
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -737,6 +739,7 @@ const NAV_ITEMS = [
   { id: 'funil', label: 'Funil & Estágios', icon: 'funnel' },
   { id: 'perdas', label: 'Propostas Perdidas', icon: 'broken' },
   { id: 'alertas', label: 'Alertas de Fechamento', icon: 'bell' },
+  { id: 'revisar', label: 'Para Revisar', icon: 'starOff' },
 ];
 
 function buildShell(){
@@ -932,6 +935,7 @@ const VIEW_SUBTITLES = {
   funil: 'Progressão das oportunidades pelo funil e pontos de evasão',
   perdas: 'Análise das oportunidades em estágio de saída e seus motivos',
   alertas: 'Propostas com fechamento esperado futuro e fechamentos vencidos',
+  revisar: 'Oportunidades com informações importantes faltando no cadastro',
 };
 
 function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); }
@@ -1121,7 +1125,7 @@ function renderCurrentView(){
   const fd = applyFilters(DATA);
   const fns = {
     overview: renderOverview, funil: renderFunilView,
-    perdas: renderPerdasView, alertas: renderAlertasView,
+    perdas: renderPerdasView, alertas: renderAlertasView, revisar: renderRevisarView,
   };
   document.getElementById('content').innerHTML = `<div class="view active" id="viewContainer"></div>`;
   fns[currentView](fd);
@@ -1430,13 +1434,22 @@ function renderFunilView(fd){
   const vc = document.getElementById('viewContainer');
 
   const abertas = d => d.estagio!=='Conquistado' && !curExitStages().includes(d.estagio);
-  const altaProb = fd.filter(d => abertas(d) && d.kwp>50).sort((a,b)=>b.probabilidade-a.probabilidade);
+  const altaProb = fd.filter(d => abertas(d) && d.kwp>50 && d.probabilidade>=75).sort((a,b)=>b.probabilidade-a.probabilidade);
   const kwpAlta = altaProb.reduce((s,d)=>s+d.kwp,0);
 
-  const baixaKwp = fd.filter(d => abertas(d) && d.kwp<=50);
+  // Tudo que não entrou acima (grandes com baixa probabilidade + tudo até 50 kWp),
+  // agrupado por probabilidade E por faixa de potência — por isso a mesma % pode
+  // aparecer duas vezes na tabela: uma linha para >50 kWp e outra para ≤50 kWp.
+  const resto = fd.filter(d => abertas(d) && !(d.kwp>50 && d.probabilidade>=75));
   const buckets = {};
-  baixaKwp.forEach(d=>{ (buckets[d.probabilidade] ??= {qtd:0, kwp:0}); buckets[d.probabilidade].qtd++; buckets[d.probabilidade].kwp+=d.kwp; });
-  const bucketRows = Object.entries(buckets).map(([p,v])=>({prob:Number(p), ...v})).sort((a,b)=>b.prob-a.prob);
+  resto.forEach(d=>{
+    const tier = d.kwp>50 ? 'grande' : 'pequena';
+    const key = d.probabilidade+'|'+tier;
+    (buckets[key] ??= {qtd:0, kwp:0, prob:d.probabilidade, tier});
+    buckets[key].qtd++;
+    buckets[key].kwp+=d.kwp;
+  });
+  const bucketRows = Object.values(buckets).sort((a,b)=> b.prob-a.prob || (a.tier==='grande'?-1:1));
 
   // kWp previsto por mês — propostas em aberto com fechamento esperado definido
   const comFechamento = fd.filter(d => abertas(d) && d.fechamentoEsperado);
@@ -1499,7 +1512,7 @@ function renderFunilView(fd){
       </div>` : `<div class="empty-state">${ICONS.inbox}<p>Nenhuma proposta em aberto com fechamento esperado definido para os filtros atuais.</p></div>`}
     </div>
 
-    <div class="section-header"><div class="section-title">${ICONS.sparkle}Grandes oportunidades (acima de 50 kWp)</div><div class="section-hint">Propostas em aberto, ordenadas da maior para a menor probabilidade · clique para detalhar</div></div>
+    <div class="section-header"><div class="section-title">${ICONS.sparkle}Grandes oportunidades (acima de 50 kWp)</div><div class="section-hint">Propostas em aberto acima de 50 kWp com probabilidade ≥ 75% · clique para detalhar</div></div>
     <div class="card">
       <div class="stat-mini-row">
         <div class="stat-mini"><div class="stat-mini-label">Oportunidades</div><div class="stat-mini-value">${fmtNum(altaProb.length)}</div></div>
@@ -1509,23 +1522,24 @@ function renderFunilView(fd){
       ${probabilityTableHtml(altaProb)}
     </div>
 
-    <div class="section-header"><div class="section-title">${ICONS.gauge}Resumo por probabilidade (abaixo de 50 kWp)</div><div class="section-hint">Propostas em aberto até 50 kWp, agrupadas por % de probabilidade · clique numa linha para ver o kWp por mês</div></div>
+    <div class="section-header"><div class="section-title">${ICONS.gauge}Resumo por probabilidade</div><div class="section-hint">Demais propostas em aberto (abaixo de 75% de probabilidade, ou até 50 kWp) · agrupadas por % e por faixa de potência · clique numa linha para ver o kWp por mês</div></div>
     <div class="card">
       ${bucketRows.length ? `
       <div class="table-wrap" style="border:none;">
         <table>
-          <thead><tr><th>Probabilidade</th><th>Qtd. de oportunidades</th><th>Potência total</th><th>Valor total</th></tr></thead>
+          <thead><tr><th>Probabilidade</th><th>Faixa</th><th>Qtd. de oportunidades</th><th>Potência total</th><th>Valor total</th></tr></thead>
           <tbody>
             ${bucketRows.map(b=>`
-              <tr class="prob-row" data-prob="${b.prob}" style="cursor:pointer;">
+              <tr class="prob-row" data-prob="${b.prob}" data-tier="${b.tier}" style="cursor:pointer;">
                 <td><span class="badge badge-gray">${b.prob}%</span></td>
-                <td class="mono-num">Existem ${fmtNum(b.qtd)} oportunidades com probabilidade de ${b.prob}%</td>
+                <td><span class="badge" style="background:${b.tier==='grande'?'#42AE5622':'#94A3B822'}; color:${b.tier==='grande'?'#2E853E':'#64748B'}">${b.tier==='grande'?'Acima de 50 kWp':'Até 50 kWp'}</span></td>
+                <td class="mono-num">Existem ${fmtNum(b.qtd)} oportunidades</td>
                 <td class="mono-num">${fmtNum(b.kwp)} kWp</td>
-                <td class="mono-num">${fmtMoney(baixaKwp.filter(d=>d.probabilidade===b.prob).reduce((s,d)=>s+d.valor,0))}</td>
+                <td class="mono-num">${fmtMoney(resto.filter(d=>d.probabilidade===b.prob && (d.kwp>50?'grande':'pequena')===b.tier).reduce((s,d)=>s+d.valor,0))}</td>
               </tr>`).join('')}
           </tbody>
         </table>
-      </div>` : `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade em aberto até 50 kWp para os filtros atuais.</p></div>`}
+      </div>` : `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade nessas condições para os filtros atuais.</p></div>`}
     </div>
   `;
   vc.querySelectorAll('.stage-row').forEach(el=>{
@@ -1539,8 +1553,10 @@ function renderFunilView(fd){
   vc.querySelectorAll('.prob-row').forEach(el=>{
     el.addEventListener('click', ()=>{
       const prob = Number(el.dataset.prob);
-      const subset = baixaKwp.filter(d=>d.probabilidade===prob);
-      openKwpPorMesModal(`kWp por mês — Probabilidade ${prob}%`, subset);
+      const tier = el.dataset.tier;
+      const subset = resto.filter(d=>d.probabilidade===prob && (d.kwp>50?'grande':'pequena')===tier);
+      const tierLabel = tier==='grande' ? 'acima de 50 kWp' : 'até 50 kWp';
+      openKwpPorMesModal(`kWp por mês — Probabilidade ${prob}% (${tierLabel})`, subset);
     });
   });
   wireOppRowClicks(vc);
@@ -1624,7 +1640,7 @@ function openKwpPorMesModal(title, rows){
 
 function probabilityTableHtml(rows){
   if (!rows.length){
-    return `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade em aberto acima de 50 kWp.</p></div>`;
+    return `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade em aberto acima de 50 kWp com probabilidade ≥ 75%.</p></div>`;
   }
   return `
     <div class="table-wrap" style="border:none;">
@@ -1912,6 +1928,85 @@ function renderAlertasView(fd){
 }
 
 /* =====================================================================
+   VIEW: Para Revisar — oportunidades com dados importantes faltando
+   ===================================================================== */
+function computeIssues(d){
+  const issues = [];
+  const emAberto = d.estagio!=='Conquistado' && !curExitStages().includes(d.estagio);
+  const fechada = d.estagio==='Conquistado' || curExitStages().includes(d.estagio);
+
+  if (!d.kwp) issues.push('kWp não informado');
+  if (curExitStages().includes(d.estagio) && !d.motivoPerda) issues.push('Motivo da perda não informado');
+  if (d.empresa === 'Não identificado') issues.push('Empresa não identificada');
+  if (d.estado === 'Não informado') issues.push('Estado não informado');
+  if (!d.vendedor || d.vendedor === 'Não Informado') issues.push('Vendedor não informado');
+  if (!d.valor) issues.push('Valor não informado');
+  if (!d.probabilidade) issues.push('Probabilidade não informada');
+  if (!d.dataCriacao) issues.push('Data de criação não informada');
+  if (emAberto && !d.fechamentoEsperado) issues.push('Fechamento esperado não informado');
+  if (fechada && !d.dataFinalizada) issues.push('Data de finalização não informada');
+  if (d.estagio==='Conquistado' && !d.dataFechamento) issues.push('Data de fechamento não informada');
+  if (d.gerente === 'Não mapeado') issues.push('Gerente não mapeado');
+  return issues;
+}
+
+function revisarRowsHtml(rows){
+  return rows.map(d=>`
+    <tr data-id="${d.id}" class="opp-row" style="cursor:pointer">
+      <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(d.oportunidade)}${operacaoBadge(d.operacao)}</td>
+      <td>${escapeHtml(d.empresa)}</td>
+      <td>${escapeHtml(d.vendedor)}</td>
+      <td><span class="badge" style="background:${stageColorAny(d.estagio)}22; color:${stageColorAny(d.estagio)}">${d.estagio}</span></td>
+      <td style="white-space:normal; min-width:220px;">${d.__issues.map(i=>`<span class="badge badge-amber" style="margin:2px 3px 2px 0;">${escapeHtml(i)}</span>`).join('')}</td>
+      <td class="mono-num">${fmtMoneyFull(d.valor)}</td>
+    </tr>`).join('');
+}
+
+function renderRevisarView(fd){
+  const withIssues = fd.map(d=>({...d, __issues: computeIssues(d)})).filter(d=>d.__issues.length>0);
+
+  const contagemPorTipo = {};
+  withIssues.forEach(d=>d.__issues.forEach(i=>{ contagemPorTipo[i]=(contagemPorTipo[i]||0)+1; }));
+  const tipos = Object.entries(contagemPorTipo).sort((a,b)=>b[1]-a[1]);
+
+  const vc = document.getElementById('viewContainer');
+  vc.innerHTML = `
+    <div class="stat-mini-row">
+      <div class="stat-mini"><div class="stat-mini-label">Oportunidades a revisar</div><div class="stat-mini-value">${fmtNum(withIssues.length)}</div></div>
+      <div class="stat-mini"><div class="stat-mini-label">% do total filtrado</div><div class="stat-mini-value">${fmtPct(fd.length?withIssues.length/fd.length*100:0)}</div></div>
+      <div class="stat-mini"><div class="stat-mini-label">Valor envolvido</div><div class="stat-mini-value">${fmtMoney(withIssues.reduce((s,d)=>s+d.valor,0))}</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Pendências por tipo</div><div class="card-title-sub">Uma mesma proposta pode ter mais de uma pendência</div></div></div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${tipos.map(([tipo,qtd])=>`<span class="badge badge-amber" style="font-size:12px; padding:6px 12px;">${escapeHtml(tipo)} · ${fmtNum(qtd)}</span>`).join('') || `<span class="section-hint">Nenhuma pendência encontrada.</span>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Oportunidades com pendências</div><div class="card-title-sub">Clique numa linha para abrir e completar o cadastro</div></div></div>
+      ${withIssues.length ? `
+      <div class="table-wrap" data-tid="revisar-tbl" style="border:none;">
+        <table>
+          <thead><tr><th>Oportunidade</th><th>Empresa</th><th>Vendedor</th><th>Estágio</th><th>Pendências</th><th data-sort="valor">Valor</th></tr></thead>
+          <tbody>${revisarRowsHtml(withIssues)}</tbody>
+        </table>
+      </div>` : `<div class="empty-state">${ICONS.sparkle}<p>Nenhuma oportunidade com dados faltando para os filtros atuais. 🎉</p></div>`}
+    </div>
+  `;
+  wireOppRowClicks(vc);
+  if (withIssues.length){
+    __tableRegistry['revisar-tbl'] = { rows: withIssues, opts:{}, sortKey:null, sortDir:-1 };
+    wireSortableHeaders(vc, (wrap, rows)=>{
+      wrap.querySelector('tbody').innerHTML = revisarRowsHtml(rows);
+      wireOppRowClicks(wrap);
+    });
+  }
+  makeColumnsResizable(vc);
+}
+
+/* =====================================================================
    CARREGAMENTO DE DADOS — busca e trata a planilha direto do repositório
    ===================================================================== */
 const DATA_FILE_NAME = 'oportunidades.xlsx';
@@ -2152,6 +2247,8 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
+
 
 
 
