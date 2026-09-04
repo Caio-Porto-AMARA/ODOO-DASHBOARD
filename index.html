@@ -471,6 +471,7 @@ const ICONS = {
 
 
 
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -1038,9 +1039,18 @@ function makeColumnsResizable(container){
     if (table.dataset.resizable) return;
     table.dataset.resizable = '1';
     table.style.tableLayout = 'fixed';
+    // com table-layout:fixed, cada célula precisa cortar o próprio conteúdo — senão o texto
+    // que não cabe "vaza" visualmente por cima da coluna vizinha em vez de truncar.
+    table.querySelectorAll('tbody td').forEach(td=>{
+      if (!td.style.whiteSpace) td.style.whiteSpace = 'nowrap';
+      if (!td.style.overflow) td.style.overflow = 'hidden';
+      if (!td.style.textOverflow) td.style.textOverflow = 'ellipsis';
+    });
     table.querySelectorAll('thead th').forEach(th=>{
       th.style.position = 'relative';
       th.style.overflow = 'hidden';
+      th.style.textOverflow = 'ellipsis';
+      th.style.whiteSpace = 'nowrap';
       if (!th.style.width) th.style.width = th.offsetWidth + 'px';
       const handle = document.createElement('span');
       handle.className = 'col-resize-handle';
@@ -2142,6 +2152,7 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
