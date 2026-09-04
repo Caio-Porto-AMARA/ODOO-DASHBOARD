@@ -303,14 +303,20 @@ a{color:inherit;}
 
 /* ---- Tables ---- */
 .table-wrap{overflow-x:auto; border-radius:var(--radius-md); border:1px solid var(--gray-200);}
+.modal-body .table-wrap{max-height:56vh; overflow-y:auto;}
 table{width:100%; border-collapse:collapse; font-size:12.5px;}
 thead th{
   background:var(--gray-50, #FAFBFA); background:var(--green-50);
   color:var(--green-700); font-weight:700; text-align:left;
   padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.4px;
   border-bottom:1px solid var(--gray-200); white-space:nowrap; cursor:pointer;
-  user-select:none;
+  user-select:none; position:relative; overflow:hidden; text-overflow:ellipsis;
 }
+.col-resize-handle{
+  position:absolute; top:0; right:0; bottom:0; width:8px; cursor:col-resize;
+  z-index:1;
+}
+.col-resize-handle:hover, .col-resize-handle.resizing{background:var(--green-300, #7FCB9C);}
 thead th:hover{background:var(--green-100);}
 thead th .sort-arrow{opacity:0.5; margin-left:3px; font-size:9px;}
 .alerta-table thead th{background:var(--green-500); color:#fff; text-align:center; cursor:default;}
@@ -938,19 +944,38 @@ function openModal(title, bodyHtml){
 /* =====================================================================
    Tabela reutilizável de oportunidades (usada em modais)
    ===================================================================== */
-function opportunityTableHtml(rows, opts={}){
+const OPP_TABLE_STATE = {};
+let oppTableSeq = 0;
+
+function sortOppTable(tableId, key){
+  const state = OPP_TABLE_STATE[tableId];
+  if (!state) return;
+  state.sortDir = (state.sortKey===key && state.sortDir==='desc') ? 'asc' : 'desc';
+  state.sortKey = key;
+  const sorted = [...state.rows].sort((a,b)=> state.sortDir==='asc' ? a.valor-b.valor : b.valor-a.valor);
+  const wrap = document.getElementById(tableId).closest('.table-wrap');
+  wrap.outerHTML = opportunityTableHtml(sorted, state.opts, tableId);
+  wireOppRowClicks(document.getElementById('modalBody'));
+}
+
+function opportunityTableHtml(rows, opts={}, reuseId){
   if (!rows.length){
     return `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade encontrada para este filtro.</p></div>`;
   }
   const showMotivo = opts.showMotivo;
   const showDias = opts.showDias;
   const showProb = opts.showProbabilidade;
+  const tableId = reuseId || `oppTable_${++oppTableSeq}`;
+  OPP_TABLE_STATE[tableId] = { rows, opts, sortKey: OPP_TABLE_STATE[reuseId]?.sortKey, sortDir: OPP_TABLE_STATE[reuseId]?.sortDir };
+  const sortDir = OPP_TABLE_STATE[tableId].sortDir;
+  const valorArrow = sortDir ? `<span class="sort-arrow">${sortDir==='asc'?'▲':'▼'}</span>` : '<span class="sort-arrow">⇅</span>';
+  const rzHandle = '<span class="col-resize-handle"></span>';
   return `
     <div class="table-wrap" style="border:none; border-radius:0;">
-      <table>
+      <table id="${tableId}" style="table-layout:fixed;">
         <thead><tr>
-          <th>Oportunidade</th><th>Empresa</th><th>Vendedor</th><th>Estágio</th>
-          ${showProb?'<th>Probabilidade</th>':''}<th>Valor</th>${showMotivo?'<th>Motivo da perda</th>':''}${showDias?'<th>Dias restantes</th>':''}
+          <th style="width:180px;">Oportunidade${rzHandle}</th><th style="width:150px;">Empresa${rzHandle}</th><th style="width:120px;">Vendedor${rzHandle}</th><th style="width:130px;">Estágio${rzHandle}</th>
+          ${showProb?`<th style="width:100px;">Probabilidade${rzHandle}</th>`:''}<th style="width:130px;" onclick="sortOppTable('${tableId}','valor')" title="Ordenar por valor">Valor ${valorArrow}${rzHandle}</th>${showMotivo?`<th style="width:160px;">Motivo da perda${rzHandle}</th>`:''}${showDias?'<th style="width:120px;">Dias restantes</th>':''}
         </tr></thead>
         <tbody>
           ${rows.map(r=>{
@@ -961,9 +986,9 @@ function opportunityTableHtml(rows, opts={}){
               diasCell = `<td>${dias===null?'—':(dias<0?`<span class="badge badge-red">${Math.abs(dias)}d atrasado</span>`:dias<=3?`<span class="badge badge-amber">${dias}d</span>`:dias+'d')}</td>`;
             }
             return `<tr data-id="${r.id}" class="opp-row" style="cursor:pointer">
-              <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.oportunidade)}${operacaoBadge(r.operacao)}</td>
-              <td>${escapeHtml(r.empresa)}</td>
-              <td>${escapeHtml(r.vendedor)}</td>
+              <td style="overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(r.oportunidade)}">${escapeHtml(r.oportunidade)}${operacaoBadge(r.operacao)}</td>
+              <td style="overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(r.empresa)}">${escapeHtml(r.empresa)}</td>
+              <td style="overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(r.vendedor)}">${escapeHtml(r.vendedor)}</td>
               <td><span class="badge" style="background:${stageColorAny(r.estagio)}22; color:${stageColorAny(r.estagio)}">${r.estagio}</span></td>
               ${showProb?`<td class="mono-num">${fmtPct(r.probabilidade)}</td>`:''}
               <td class="mono-num">${fmtMoneyFull(r.valor)}</td>
@@ -979,6 +1004,31 @@ function opportunityTableHtml(rows, opts={}){
 function wireOppRowClicks(container){
   container.querySelectorAll('.opp-row').forEach(el=>{
     el.addEventListener('click', ()=> openOpportunityModal(parseInt(el.dataset.id)));
+  });
+  wireColumnResize(container);
+}
+
+function wireColumnResize(container){
+  container.querySelectorAll('.col-resize-handle').forEach(handle=>{
+    handle.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const th = handle.closest('th');
+      const startX = e.clientX;
+      const startWidth = th.offsetWidth;
+      handle.classList.add('resizing');
+      const onMove = (ev)=>{
+        const newWidth = Math.max(50, startWidth + (ev.clientX - startX));
+        th.style.width = newWidth + 'px';
+      };
+      const onUp = ()=>{
+        handle.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
   });
 }
 
@@ -1741,29 +1791,53 @@ function renderPerdasView(fd){
 /* =====================================================================
    VIEW: Alertas de Fechamento
    ===================================================================== */
+let ALERTA_SORT_KEY = null;
+let ALERTA_SORT_DIR = null;
+function toggleAlertaSort(key){
+  ALERTA_SORT_DIR = (ALERTA_SORT_KEY===key && ALERTA_SORT_DIR==='desc') ? 'asc' : 'desc';
+  ALERTA_SORT_KEY = key;
+  renderCurrentView();
+}
+
 function renderAlertasView(fd){
   const now = new Date(); now.setHours(0,0,0,0);
   const comData = fd.filter(d=>d.fechamentoEsperado && d.estagio!=='Conquistado' && !curExitStages().includes(d.estagio));
-  const vencidas = comData.filter(d=>parseISO(d.fechamentoEsperado)<now)
-    .sort((a,b)=>parseISO(a.fechamentoEsperado)-parseISO(b.fechamentoEsperado));
-  const proximos = comData.filter(d=>parseISO(d.fechamentoEsperado)>=now)
-    .sort((a,b)=>parseISO(a.fechamentoEsperado)-parseISO(b.fechamentoEsperado));
+  const dateSort = (a,b)=>parseISO(a.fechamentoEsperado)-parseISO(b.fechamentoEsperado);
+  const alertaSortAccessors = { valor: d=>d.valor, kwp: d=>d.kwp||0, probabilidade: d=>d.probabilidade, dias: d=>parseISO(d.fechamentoEsperado).getTime() };
+  const sortFn = ALERTA_SORT_KEY
+    ? (a,b)=> ALERTA_SORT_DIR==='asc'
+      ? alertaSortAccessors[ALERTA_SORT_KEY](a)-alertaSortAccessors[ALERTA_SORT_KEY](b)
+      : alertaSortAccessors[ALERTA_SORT_KEY](b)-alertaSortAccessors[ALERTA_SORT_KEY](a)
+    : dateSort;
+  const vencidas = comData.filter(d=>parseISO(d.fechamentoEsperado)<now).sort(sortFn);
+  const proximos = comData.filter(d=>parseISO(d.fechamentoEsperado)>=now).sort(sortFn);
   const venceEm3 = proximos.filter(d=>{ const dias=daysBetween(now, parseISO(d.fechamentoEsperado)); return dias<=3; });
 
   const monthOnly = (iso) => { const s = parseISO(iso).toLocaleDateString('pt-BR',{month:'long'}); return s.charAt(0).toUpperCase()+s.slice(1); };
 
+  const rzHandle = '<span class="col-resize-handle"></span>';
+  const sortArrow = (key) => ALERTA_SORT_KEY===key ? `<span class="sort-arrow">${ALERTA_SORT_DIR==='asc'?'▲':'▼'}</span>` : '<span class="sort-arrow">⇅</span>';
   const rowsTable = (rows, opts={}) => rows.length ? `
     <div class="table-wrap" style="border:none;">
-      <table class="alerta-table">
-        <thead><tr><th>Clientes</th><th>KWp</th><th>%</th><th>Mês</th><th>Status</th><th>Dias restantes</th></tr></thead>
+      <table class="alerta-table" style="table-layout:fixed;">
+        <thead><tr>
+          <th style="width:220px;">Clientes${rzHandle}</th>
+          <th style="width:90px;" onclick="toggleAlertaSort('kwp')" title="Ordenar por KWp">KWp ${sortArrow('kwp')}${rzHandle}</th>
+          <th style="width:90px;" onclick="toggleAlertaSort('valor')" title="Ordenar por valor">Valor ${sortArrow('valor')}${rzHandle}</th>
+          <th style="width:70px;" onclick="toggleAlertaSort('probabilidade')" title="Ordenar por probabilidade">% ${sortArrow('probabilidade')}${rzHandle}</th>
+          <th style="width:110px;">Mês${rzHandle}</th>
+          <th style="width:140px;">Status${rzHandle}</th>
+          <th style="width:130px;" onclick="toggleAlertaSort('dias')" title="Ordenar por dias restantes">Dias restantes ${sortArrow('dias')}</th>
+        </tr></thead>
         <tbody>
           ${rows.map(d=>{
             const dias = daysBetween(now, parseISO(d.fechamentoEsperado));
             const cls = dias<0 ? 'row-overdue' : (dias<=3 ? 'row-soon' : '');
             const diasTxt = dias<0 ? `${Math.abs(dias)}d atrasado` : `${dias}d restantes`;
             return `<tr class="opp-row ${cls}" data-id="${d.id}" style="cursor:pointer;">
-              <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(d.empresa)}${operacaoBadge(d.operacao)}</td>
+              <td style="overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(d.empresa)}">${escapeHtml(d.empresa)}${operacaoBadge(d.operacao)}</td>
               <td class="mono-num">${d.kwp ? fmtNum(d.kwp) : '—'}</td>
+              <td class="mono-num">${fmtMoneyFull(d.valor)}</td>
               <td class="mono-num">${Math.round(d.probabilidade)}</td>
               <td style="text-transform:uppercase;">${monthOnly(d.fechamentoEsperado)}</td>
               <td><span class="badge" style="background:${stageColorAny(d.estagio)}22; color:${stageColorAny(d.estagio)}">${d.estagio}</span></td>
@@ -1998,8 +2072,14 @@ async function bootstrap(){
 }
 
 /* ---------------- Tela de senha ---------------- */
-const SITE_PASSWORD = 'Amara2026';
+const SITE_PASSWORD_HASH = 'b95f8c79110572380a3adf052cd12d892e3669e74e071af8d137956dfa552b33';
 const PASSWORD_SESSION_KEY = 'amaranzero_unlocked';
+
+async function sha256Hex(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+window.sha256Hex = sha256Hex;
 
 function showPasswordGate(){
   document.getElementById('app').innerHTML = `
@@ -2017,8 +2097,9 @@ function showPasswordGate(){
   `;
   const input = document.getElementById('gatePasswordInput');
   const errorEl = document.getElementById('gateError');
-  const tryUnlock = () => {
-    if (input.value === SITE_PASSWORD){
+  const tryUnlock = async () => {
+    const hash = await sha256Hex(input.value);
+    if (hash === SITE_PASSWORD_HASH){
       sessionStorage.setItem(PASSWORD_SESSION_KEY, '1');
       bootstrap();
     } else {
