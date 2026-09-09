@@ -474,6 +474,9 @@ const ICONS = {
 
 
 
+
+
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -1434,7 +1437,13 @@ function renderFunilView(fd){
   const vc = document.getElementById('viewContainer');
 
   const abertas = d => d.estagio!=='Conquistado' && !curExitStages().includes(d.estagio);
-  const altaProb = fd.filter(d => abertas(d) && d.kwp>50 && d.probabilidade>=75).sort((a,b)=>b.probabilidade-a.probabilidade);
+  const altaProb = fd.filter(d => abertas(d) && d.kwp>50 && d.probabilidade>=75).sort((a,b)=>{
+    // ordena por fechamento previsto mais próximo primeiro; sem data definida vai para o fim
+    if (!a.fechamentoEsperado && !b.fechamentoEsperado) return b.probabilidade-a.probabilidade;
+    if (!a.fechamentoEsperado) return 1;
+    if (!b.fechamentoEsperado) return -1;
+    return a.fechamentoEsperado.localeCompare(b.fechamentoEsperado);
+  });
   const kwpAlta = altaProb.reduce((s,d)=>s+d.kwp,0);
 
   // Tudo que não entrou acima (grandes com baixa probabilidade + tudo até 50 kWp),
@@ -1512,7 +1521,7 @@ function renderFunilView(fd){
       </div>` : `<div class="empty-state">${ICONS.inbox}<p>Nenhuma proposta em aberto com fechamento esperado definido para os filtros atuais.</p></div>`}
     </div>
 
-    <div class="section-header"><div class="section-title">${ICONS.sparkle}Grandes oportunidades (acima de 50 kWp)</div><div class="section-hint">Propostas em aberto acima de 50 kWp com probabilidade ≥ 75% · clique para detalhar</div></div>
+    <div class="section-header"><div class="section-title">${ICONS.sparkle}Grandes oportunidades (acima de 50 kWp)</div><div class="section-hint">Propostas acima de 50 kWp com probabilidade ≥ 75% · ordenadas pelo fechamento previsto mais próximo · clique para detalhar</div></div>
     <div class="card">
       <div class="stat-mini-row">
         <div class="stat-mini"><div class="stat-mini-label">Oportunidades</div><div class="stat-mini-value">${fmtNum(altaProb.length)}</div></div>
@@ -1599,11 +1608,6 @@ function openKwpPorMesModal(title, rows){
   });
   const meses = Object.keys(porMes).sort();
 
-  if (!meses.length){
-    openModal(title, `<div class="empty-state" style="padding:32px 24px;">${ICONS.inbox}<p>Nenhuma dessas oportunidades tem mês de fechamento esperado definido.</p></div>`);
-    return;
-  }
-
   openModal(title, `
     <div style="padding:22px 24px;">
       <div class="stat-mini-row">
@@ -1611,9 +1615,15 @@ function openKwpPorMesModal(title, rows){
         <div class="stat-mini"><div class="stat-mini-label">Potência total</div><div class="stat-mini-value">${fmtNum(rows.reduce((s,d)=>s+d.kwp,0))} kWp</div></div>
         <div class="stat-mini"><div class="stat-mini-label">Valor total</div><div class="stat-mini-value">${fmtMoney(rows.reduce((s,d)=>s+d.valor,0))}</div></div>
       </div>
-      <div class="chart-box"><canvas id="chartKwpMesModal"></canvas></div>
+      ${meses.length ? `<div class="chart-box"><canvas id="chartKwpMesModal"></canvas></div>` : `<div class="empty-state" style="padding:20px;">${ICONS.inbox}<p>Nenhuma dessas oportunidades tem mês de fechamento esperado definido.</p></div>`}
+      <div class="section-hint" style="margin:18px 0 8px 0; font-weight:700; color:var(--gray-700); text-transform:uppercase; font-size:11px;">Oportunidades</div>
+      ${opportunityTableHtml(rows, {modal:true, showProbabilidade:true})}
     </div>
   `);
+  wireOppRowClicks(document.getElementById('modalBody'));
+  wireOpportunityTableSort(document.getElementById('modalBody'));
+
+  if (!meses.length) return;
 
   const kwpValueLabelPlugin = {
     id: 'kwpValueLabelModal',
@@ -1963,7 +1973,7 @@ function revisarRowsHtml(rows){
 }
 
 function renderRevisarView(fd){
-  const withIssues = fd.map(d=>({...d, __issues: computeIssues(d)})).filter(d=>d.__issues.length>0);
+  const withIssues = fd.filter(d=>d.estagio!=='Conquistado').map(d=>({...d, __issues: computeIssues(d)})).filter(d=>d.__issues.length>0);
 
   const contagemPorTipo = {};
   withIssues.forEach(d=>d.__issues.forEach(i=>{ contagemPorTipo[i]=(contagemPorTipo[i]||0)+1; }));
@@ -2247,6 +2257,9 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
+
+
 
 
 
