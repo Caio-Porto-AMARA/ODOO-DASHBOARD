@@ -478,6 +478,7 @@ const ICONS = {
 
 
 
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -1032,7 +1033,16 @@ function wireSortableHeaders(container, onSorted){
       const key = th.dataset.sort;
       state.sortDir = (state.sortKey === key) ? state.sortDir*-1 : -1;
       state.sortKey = key;
-      state.rows.sort((a,b)=> ((a[key]||0)-(b[key]||0)) * state.sortDir);
+      state.rows.sort((a,b)=>{
+        let av = a[key], bv = b[key];
+        const aNull = av===null||av===undefined||av==='';
+        const bNull = bv===null||bv===undefined||bv==='';
+        if (aNull && bNull) return 0;
+        if (aNull) return 1;  // nulos sempre por último, independente da direção
+        if (bNull) return -1;
+        if (typeof av === 'string' || typeof bv === 'string') return String(av).localeCompare(String(bv)) * state.sortDir;
+        return (av-bv) * state.sortDir;
+      });
       wrap.querySelectorAll('thead th[data-sort] .sort-arrow').forEach(a=>a.textContent='↕');
       th.querySelector('.sort-arrow').textContent = state.sortDir===1 ? '▲' : '▼';
       onSorted(wrap, state.rows, state.opts);
@@ -1461,6 +1471,37 @@ function renderFunilView(fd){
   });
   const bucketRows = Object.values(buckets).sort((a,b)=> b.prob-a.prob || (a.tier==='grande'?-1:1));
 
+  // Resumo por mês — Grandes oportunidades (fechamento esperado, sem data agrupada à parte)
+  const altaProbPorMes = {};
+  altaProb.forEach(d=>{
+    const key = d.fechamentoEsperado ? d.fechamentoEsperado.slice(0,7) : '—';
+    (altaProbPorMes[key] ??= {qtd:0, kwp:0, valor:0});
+    altaProbPorMes[key].qtd++; altaProbPorMes[key].kwp+=d.kwp; altaProbPorMes[key].valor+=d.valor;
+  });
+  const altaProbMeses = Object.keys(altaProbPorMes).filter(k=>k!=='—').sort();
+  if (altaProbPorMes['—']) altaProbMeses.push('—');
+
+  // Distribuição por estágio dentro de "Grandes oportunidades"
+  const altaProbPorEstagio = {};
+  altaProb.forEach(d=>{ altaProbPorEstagio[d.estagio] = (altaProbPorEstagio[d.estagio]||0)+1; });
+
+  // Resumo por mês — Resumo por probabilidade, separado por faixa de potência
+  const restoPorMesTier = { grande:{}, pequena:{} };
+  resto.forEach(d=>{
+    const tier = d.kwp>50 ? 'grande' : 'pequena';
+    const key = d.fechamentoEsperado ? d.fechamentoEsperado.slice(0,7) : '—';
+    (restoPorMesTier[tier][key] ??= {qtd:0, kwp:0});
+    restoPorMesTier[tier][key].qtd++; restoPorMesTier[tier][key].kwp+=d.kwp;
+  });
+  const mesesTier = (tier) => {
+    const meses = Object.keys(restoPorMesTier[tier]).filter(k=>k!=='—').sort();
+    if (restoPorMesTier[tier]['—']) meses.push('—');
+    return meses;
+  };
+  const restoMesesGrande = mesesTier('grande');
+  const restoMesesPequena = mesesTier('pequena');
+  const fmtMesLabel = (key) => key==='—' ? 'Sem data definida' : (parseISO(key+'-01').toLocaleDateString('pt-BR',{month:'long', year:'numeric'}));
+
   // kWp previsto por mês — propostas em aberto com fechamento esperado definido
   const comFechamento = fd.filter(d => abertas(d) && d.fechamentoEsperado);
   const kwpPorMes = {};
@@ -1522,14 +1563,39 @@ function renderFunilView(fd){
       </div>` : `<div class="empty-state">${ICONS.inbox}<p>Nenhuma proposta em aberto com fechamento esperado definido para os filtros atuais.</p></div>`}
     </div>
 
-    <div class="section-header"><div class="section-title">${ICONS.sparkle}Grandes oportunidades (acima de 50 kWp)</div><div class="section-hint">Propostas acima de 50 kWp com probabilidade ≥ 75% · ordenadas pelo fechamento previsto mais próximo · clique para detalhar</div></div>
+    <div class="section-header"><div class="section-title">${ICONS.sparkle}Grandes oportunidades (acima de 50 kWp)</div><div class="section-hint">Propostas acima de 50 kWp com probabilidade ≥ 75% · ordenadas da mais antiga para a mais nova pelo fechamento previsto · clique para detalhar</div></div>
     <div class="card">
       <div class="stat-mini-row">
         <div class="stat-mini"><div class="stat-mini-label">Oportunidades</div><div class="stat-mini-value">${fmtNum(altaProb.length)}</div></div>
         <div class="stat-mini"><div class="stat-mini-label">Potência total</div><div class="stat-mini-value">${fmtNum(kwpAlta)} kWp</div></div>
         <div class="stat-mini"><div class="stat-mini-label">Valor em jogo</div><div class="stat-mini-value">${fmtMoney(altaProb.reduce((s,d)=>s+d.valor,0))}</div></div>
+        <div class="stat-mini"><div class="stat-mini-label">Ticket médio</div><div class="stat-mini-value">${fmtMoney(altaProb.length?altaProb.reduce((s,d)=>s+d.valor,0)/altaProb.length:0)}</div></div>
       </div>
+      ${altaProb.length ? `
+      <div style="margin-bottom:16px; display:flex; flex-wrap:wrap; gap:8px;">
+        ${Object.entries(altaProbPorEstagio).sort((a,b)=>b[1]-a[1]).map(([est,qtd])=>
+          `<span class="badge" style="background:${stageColorAny(est)}22; color:${stageColorAny(est)}; font-weight:700; padding:6px 12px;">${escapeHtml(est)} · ${fmtNum(qtd)}</span>`
+        ).join('')}
+      </div>` : ''}
       ${probabilityTableHtml(altaProb)}
+      ${altaProb.length ? `
+      <div class="section-hint" style="margin:18px 0 8px 0; font-weight:700; color:var(--gray-700); text-transform:uppercase; font-size:11px;">Resumo por mês</div>
+      <div class="table-wrap" style="border:none;">
+        <table>
+          <thead><tr><th>Mês</th><th>Qtd. propostas</th><th>kWp previsto</th><th>Valor previsto</th></tr></thead>
+          <tbody>
+            ${altaProbMeses.map(k=>{
+              const v = altaProbPorMes[k];
+              return `<tr>
+                <td style="text-transform:capitalize;">${fmtMesLabel(k)}</td>
+                <td class="mono-num">${fmtNum(v.qtd)}</td>
+                <td class="mono-num">${fmtNum(v.kwp)} kWp</td>
+                <td class="mono-num">${fmtMoney(v.valor)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
     </div>
 
     <div class="section-header"><div class="section-title">${ICONS.gauge}Resumo por probabilidade</div><div class="section-hint">Demais propostas em aberto (abaixo de 75% de probabilidade, ou até 50 kWp) · agrupadas por % e por faixa de potência · clique numa linha para ver o kWp por mês</div></div>
@@ -1549,7 +1615,39 @@ function renderFunilView(fd){
               </tr>`).join('')}
           </tbody>
         </table>
-      </div>` : `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade nessas condições para os filtros atuais.</p></div>`}
+      </div>
+      <div class="section-hint" style="margin:20px 0 10px 0; font-weight:700; color:var(--gray-700); text-transform:uppercase; font-size:11px;">Resumo por mês</div>
+      <div class="grid-2">
+        <div>
+          <div style="font-weight:700; font-size:12.5px; color:var(--gray-900); margin-bottom:8px;">Acima de 50 kWp</div>
+          <div class="table-wrap" style="border:none;">
+            <table>
+              <thead><tr><th>Mês</th><th>Qtd.</th><th>kWp</th></tr></thead>
+              <tbody>
+                ${restoMesesGrande.length ? restoMesesGrande.map(k=>{
+                  const v = restoPorMesTier.grande[k];
+                  return `<tr><td style="text-transform:capitalize;">${fmtMesLabel(k)}</td><td class="mono-num">${fmtNum(v.qtd)}</td><td class="mono-num">${fmtNum(v.kwp)} kWp</td></tr>`;
+                }).join('') : `<tr><td colspan="3" style="color:var(--gray-500);">Nenhuma oportunidade nessa faixa.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:12.5px; color:var(--gray-900); margin-bottom:8px;">Até 50 kWp</div>
+          <div class="table-wrap" style="border:none;">
+            <table>
+              <thead><tr><th>Mês</th><th>Qtd.</th><th>kWp</th></tr></thead>
+              <tbody>
+                ${restoMesesPequena.length ? restoMesesPequena.map(k=>{
+                  const v = restoPorMesTier.pequena[k];
+                  return `<tr><td style="text-transform:capitalize;">${fmtMesLabel(k)}</td><td class="mono-num">${fmtNum(v.qtd)}</td><td class="mono-num">${fmtNum(v.kwp)} kWp</td></tr>`;
+                }).join('') : `<tr><td colspan="3" style="color:var(--gray-500);">Nenhuma oportunidade nessa faixa.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      ` : `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade nessas condições para os filtros atuais.</p></div>`}
     </div>
   `;
   vc.querySelectorAll('.stage-row').forEach(el=>{
@@ -1570,6 +1668,10 @@ function renderFunilView(fd){
     });
   });
   wireOppRowClicks(vc);
+  wireSortableHeaders(vc, (wrap, rows)=>{
+    wrap.querySelector('tbody').innerHTML = probabilityRowsHtml(rows);
+    wireOppRowClicks(wrap);
+  });
 
   if (mesesOrdenados.length){
     const kwpValueLabelPlugin = {
@@ -1649,28 +1751,33 @@ function openKwpPorMesModal(title, rows){
   });
 }
 
+function probabilityRowsHtml(rows){
+  return rows.map(r=>{
+    const mes = r.fechamentoEsperado ? parseISO(r.fechamentoEsperado).toLocaleDateString('pt-BR',{month:'long', year:'numeric'}) : '—';
+    const c = stageColorAny(r.estagio);
+    return `<tr class="opp-row" data-id="${r.id}" style="cursor:pointer; background:${c}1F; border-left:3px solid ${c};">
+      <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; font-weight:700;">${escapeHtml(r.empresa)}${operacaoBadge(r.operacao)}</td>
+      <td>${escapeHtml(r.vendedor)}</td>
+      <td>${escapeHtml(r.gerente)}</td>
+      <td class="mono-num">${r.kwp ? fmtNum(r.kwp) : '—'}</td>
+      <td><span class="badge badge-green">${fmtPct(r.probabilidade)}</span></td>
+      <td><span class="badge" style="background:${c}30; color:${c}; font-weight:800;">${r.estagio}</span></td>
+      <td style="text-transform:capitalize;">${mes}</td>
+    </tr>`;
+  }).join('');
+}
+
 function probabilityTableHtml(rows){
   if (!rows.length){
     return `<div class="empty-state">${ICONS.inbox}<p>Nenhuma oportunidade em aberto acima de 50 kWp com probabilidade ≥ 75%.</p></div>`;
   }
+  const tid = 'probtbl-' + (__tableIdCounter++);
+  __tableRegistry[tid] = { rows: [...rows], opts:{}, sortKey:null, sortDir:-1 };
   return `
-    <div class="table-wrap" style="border:none;">
+    <div class="table-wrap" data-tid="${tid}" style="border:none;">
       <table>
-        <thead><tr><th>Empresa</th><th>Vendedor</th><th>Gerente</th><th>kWp</th><th>Probabilidade</th><th>Estágio</th><th>Mês previsto</th></tr></thead>
-        <tbody>
-          ${rows.map(r=>{
-            const mes = r.fechamentoEsperado ? parseISO(r.fechamentoEsperado).toLocaleDateString('pt-BR',{month:'long', year:'numeric'}) : '—';
-            return `<tr class="opp-row" data-id="${r.id}" style="cursor:pointer;">
-              <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.empresa)}${operacaoBadge(r.operacao)}</td>
-              <td>${escapeHtml(r.vendedor)}</td>
-              <td>${escapeHtml(r.gerente)}</td>
-              <td class="mono-num">${r.kwp ? fmtNum(r.kwp) : '—'}</td>
-              <td><span class="badge badge-green">${fmtPct(r.probabilidade)}</span></td>
-              <td><span class="badge" style="background:${stageColorAny(r.estagio)}22; color:${stageColorAny(r.estagio)}">${r.estagio}</span></td>
-              <td style="text-transform:capitalize;">${mes}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
+        <thead><tr><th>Empresa</th><th>Vendedor</th><th>Gerente</th><th data-sort="kwp">kWp</th><th data-sort="probabilidade">Probabilidade</th><th>Estágio</th><th data-sort="fechamentoEsperado">Mês previsto</th></tr></thead>
+        <tbody>${probabilityRowsHtml(rows)}</tbody>
       </table>
     </div>`;
 }
@@ -2289,6 +2396,7 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
