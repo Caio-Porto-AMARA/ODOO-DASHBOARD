@@ -477,6 +477,7 @@ const ICONS = {
 
 
 
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -1972,12 +1973,20 @@ function revisarRowsHtml(rows){
     </tr>`).join('');
 }
 
+let revisarDeselecionados = new Set(); // tipos de pendência desmarcados pelo usuário (tudo marcado por padrão)
+
 function renderRevisarView(fd){
-  const withIssues = fd.filter(d=>d.estagio!=='Conquistado').map(d=>({...d, __issues: computeIssues(d)})).filter(d=>d.__issues.length>0);
+  const todasComIssues = fd.filter(d=>d.estagio!=='Conquistado').map(d=>({...d, __issues: computeIssues(d)})).filter(d=>d.__issues.length>0);
 
   const contagemPorTipo = {};
-  withIssues.forEach(d=>d.__issues.forEach(i=>{ contagemPorTipo[i]=(contagemPorTipo[i]||0)+1; }));
-  const tipos = Object.entries(contagemPorTipo).sort((a,b)=>b[1]-a[1]);
+  todasComIssues.forEach(d=>d.__issues.forEach(i=>{ contagemPorTipo[i]=(contagemPorTipo[i]||0)+1; }));
+  const tipos = Object.entries(contagemPorTipo).sort((a,b)=>b[1]-a[1]).map(([tipo])=>tipo);
+
+  // esquece seleções de tipos que não existem mais (ex: trocou de operação/filtro)
+  revisarDeselecionados.forEach(t=>{ if (!tipos.includes(t)) revisarDeselecionados.delete(t); });
+
+  const selecionados = tipos.filter(t=>!revisarDeselecionados.has(t));
+  const withIssues = todasComIssues.filter(d=>d.__issues.some(i=>selecionados.includes(i)));
 
   const vc = document.getElementById('viewContainer');
   vc.innerHTML = `
@@ -1988,10 +1997,21 @@ function renderRevisarView(fd){
     </div>
 
     <div class="card">
-      <div class="card-head"><div><div class="card-title">Pendências por tipo</div><div class="card-title-sub">Uma mesma proposta pode ter mais de uma pendência</div></div></div>
-      <div style="display:flex; flex-wrap:wrap; gap:8px;">
-        ${tipos.map(([tipo,qtd])=>`<span class="badge badge-amber" style="font-size:12px; padding:6px 12px;">${escapeHtml(tipo)} · ${fmtNum(qtd)}</span>`).join('') || `<span class="section-hint">Nenhuma pendência encontrada.</span>`}
+      <div class="card-head">
+        <div><div class="card-title">Filtrar por tipo de pendência</div><div class="card-title-sub">Mostra propostas com pelo menos um dos tipos marcados abaixo</div></div>
+        <div class="card-tools">
+          <button type="button" id="revisarSelAll" class="btn-clear" style="padding:5px 10px; font-size:11px;">Marcar todos</button>
+          <button type="button" id="revisarSelNone" class="btn-clear" style="padding:5px 10px; font-size:11px;">Desmarcar todos</button>
+        </div>
       </div>
+      ${tipos.length ? `
+      <div style="display:flex; flex-wrap:wrap; gap:10px;">
+        ${tipos.map(tipo => `
+          <label style="display:flex; align-items:center; gap:7px; background:var(--gray-100); border-radius:9px; padding:7px 13px; font-size:12.5px; font-weight:600; color:var(--gray-700); cursor:pointer;">
+            <input type="checkbox" class="revisar-tipo-chk" value="${escapeHtml(tipo)}" ${revisarDeselecionados.has(tipo)?'':'checked'}>
+            ${escapeHtml(tipo)} · ${fmtNum(contagemPorTipo[tipo])}
+          </label>`).join('')}
+      </div>` : `<span class="section-hint">Nenhuma pendência encontrada.</span>`}
     </div>
 
     <div class="card">
@@ -2002,7 +2022,7 @@ function renderRevisarView(fd){
           <thead><tr><th>Oportunidade</th><th>Empresa</th><th>Vendedor</th><th>Estágio</th><th>Pendências</th><th data-sort="valor">Valor</th></tr></thead>
           <tbody>${revisarRowsHtml(withIssues)}</tbody>
         </table>
-      </div>` : `<div class="empty-state">${ICONS.sparkle}<p>Nenhuma oportunidade com dados faltando para os filtros atuais. 🎉</p></div>`}
+      </div>` : `<div class="empty-state">${ICONS.sparkle}<p>Nenhuma oportunidade com pendência para os tipos marcados. 🎉</p></div>`}
     </div>
   `;
   wireOppRowClicks(vc);
@@ -2014,6 +2034,18 @@ function renderRevisarView(fd){
     });
   }
   makeColumnsResizable(vc);
+
+  vc.querySelectorAll('.revisar-tipo-chk').forEach(chk=>{
+    chk.addEventListener('change', ()=>{
+      if (chk.checked) revisarDeselecionados.delete(chk.value);
+      else revisarDeselecionados.add(chk.value);
+      renderRevisarView(fd);
+    });
+  });
+  const selAllBtn = document.getElementById('revisarSelAll');
+  const selNoneBtn = document.getElementById('revisarSelNone');
+  if (selAllBtn) selAllBtn.addEventListener('click', ()=>{ revisarDeselecionados.clear(); renderRevisarView(fd); });
+  if (selNoneBtn) selNoneBtn.addEventListener('click', ()=>{ tipos.forEach(t=>revisarDeselecionados.add(t)); renderRevisarView(fd); });
 }
 
 /* =====================================================================
@@ -2257,6 +2289,7 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
