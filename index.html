@@ -10,7 +10,7 @@
 <script>
 /*!
  * Chart.js v4.5.1
- * https://www.chartjs.org 
+ * https://www.chartjs.org
  * (c) 2025 Chart.js Contributors
  * Released under the MIT License
  */
@@ -159,7 +159,7 @@ a{color:inherit;}
 .update-pill .dot{width:6px; height:6px; border-radius:50%; background:var(--green-500); animation:pulse 2s infinite;}
 @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:0.35;}}
 
-/* ------ Filters bar  ------ */
+/* ---- Filters bar ---- */
 .filters-bar{display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap;}
 .filter-field{display:flex; flex-direction:column; gap:4px;}
 .filter-field label{font-size:10.5px; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:0.5px;}
@@ -323,6 +323,9 @@ thead th .sort-arrow{opacity:0.5; margin-left:3px; font-size:9px;}
 .alerta-table tbody td:first-child{text-align:left;}
 tbody td{padding:10px 14px; border-bottom:1px solid var(--gray-100); color:var(--gray-900); white-space:nowrap;}
 tbody tr:hover{background:var(--green-50);}
+.zebra-table tbody tr:nth-child(odd){background:var(--green-50);}
+.zebra-table tbody tr:nth-child(even){background:#FBFCFB;}
+.zebra-table tbody tr:hover{background:var(--green-100) !important;}
 tbody tr:last-child td{border-bottom:none;}
 .rank-badge{
   display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px;
@@ -460,6 +463,7 @@ const ICONS = {
 
 </script>
 <script>
+
 
 
 
@@ -1581,7 +1585,7 @@ function renderFunilView(fd){
       ${altaProb.length ? `
       <div class="section-hint" style="margin:18px 0 8px 0; font-weight:700; color:var(--gray-700); text-transform:uppercase; font-size:11px;">Resumo por mês</div>
       <div class="table-wrap" style="border:none;">
-        <table>
+        <table class="zebra-table">
           <thead><tr><th>Mês</th><th>Qtd. propostas</th><th>kWp previsto</th><th>Valor previsto</th></tr></thead>
           <tbody>
             ${altaProbMeses.map(k=>{
@@ -1602,7 +1606,7 @@ function renderFunilView(fd){
     <div class="card">
       ${bucketRows.length ? `
       <div class="table-wrap" style="border:none;">
-        <table>
+        <table class="zebra-table">
           <thead><tr><th>Probabilidade</th><th>Faixa</th><th>Qtd. de oportunidades</th><th>Potência total</th><th>Valor total</th></tr></thead>
           <tbody>
             ${bucketRows.map(b=>`
@@ -1621,7 +1625,7 @@ function renderFunilView(fd){
         <div>
           <div style="font-weight:700; font-size:12.5px; color:var(--gray-900); margin-bottom:8px;">Acima de 50 kWp</div>
           <div class="table-wrap" style="border:none;">
-            <table>
+            <table class="zebra-table">
               <thead><tr><th>Mês</th><th>Qtd.</th><th>kWp</th></tr></thead>
               <tbody>
                 ${restoMesesGrande.length ? restoMesesGrande.map(k=>{
@@ -1635,7 +1639,7 @@ function renderFunilView(fd){
         <div>
           <div style="font-weight:700; font-size:12.5px; color:var(--gray-900); margin-bottom:8px;">Até 50 kWp</div>
           <div class="table-wrap" style="border:none;">
-            <table>
+            <table class="zebra-table">
               <thead><tr><th>Mês</th><th>Qtd.</th><th>kWp</th></tr></thead>
               <tbody>
                 ${restoMesesPequena.length ? restoMesesPequena.map(k=>{
@@ -1755,7 +1759,7 @@ function probabilityRowsHtml(rows){
   return rows.map(r=>{
     const mes = r.fechamentoEsperado ? parseISO(r.fechamentoEsperado).toLocaleDateString('pt-BR',{month:'long', year:'numeric'}) : '—';
     const c = stageColorAny(r.estagio);
-    return `<tr class="opp-row" data-id="${r.id}" style="cursor:pointer; background:${c}1F; border-left:3px solid ${c};">
+    return `<tr class="opp-row" data-id="${r.id}" style="cursor:pointer;">
       <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; font-weight:700;">${escapeHtml(r.empresa)}${operacaoBadge(r.operacao)}</td>
       <td>${escapeHtml(r.vendedor)}</td>
       <td>${escapeHtml(r.gerente)}</td>
@@ -1775,7 +1779,7 @@ function probabilityTableHtml(rows){
   __tableRegistry[tid] = { rows: [...rows], opts:{}, sortKey:null, sortDir:-1 };
   return `
     <div class="table-wrap" data-tid="${tid}" style="border:none;">
-      <table>
+      <table class="zebra-table">
         <thead><tr><th>Empresa</th><th>Vendedor</th><th>Gerente</th><th data-sort="kwp">kWp</th><th data-sort="probabilidade">Probabilidade</th><th>Estágio</th><th data-sort="fechamentoEsperado">Mês previsto</th></tr></thead>
         <tbody>${probabilityRowsHtml(rows)}</tbody>
       </table>
@@ -1913,6 +1917,22 @@ function renderPerdasView(fd){
   const semInformacao = byMotivo['Motivo não informado'] || 0;
   const motivos = Object.entries(byMotivo).filter(m=>m[0]!=='Motivo não informado').sort((a,b)=>b[1]-a[1]);
 
+  // Resumo de perdas por gerente — motivo x quantidade x valor perdido
+  const regiaoAbrev = (r) => r==='Norte/Nordeste' ? 'N/NE' : r==='Sul/Sudeste/Centro-Oeste' ? 'S/SE/CO' : r;
+  const porGerente = {};
+  perdidas.forEach(d=>{
+    (porGerente[d.gerente] ??= { regiao: d.regiao, motivos:{} });
+    const m = d.motivoPerda || 'Motivo não informado';
+    (porGerente[d.gerente].motivos[m] ??= { qtd:0, valor:0 });
+    porGerente[d.gerente].motivos[m].qtd++;
+    porGerente[d.gerente].motivos[m].valor += d.valor;
+  });
+  const gerentesComPerda = Object.keys(porGerente).sort((a,b)=>{
+    const totalA = Object.values(porGerente[a].motivos).reduce((s,m)=>s+m.qtd,0);
+    const totalB = Object.values(porGerente[b].motivos).reduce((s,m)=>s+m.qtd,0);
+    return totalB-totalA;
+  });
+
   const vc = document.getElementById('viewContainer');
   vc.innerHTML = `
     <div class="stat-mini-row">
@@ -1930,6 +1950,45 @@ function renderPerdasView(fd){
         Motivo não informado: ${fmtNum(semInformacao)} propostas (${fmtPct(semInformacao/perdidas.length*100)}) · não entra no gráfico acima
       </div>` : ''}
     </div>
+
+    <div class="section-header"><div class="section-title">${ICONS.gauge}Resumo de perdas por gerente</div><div class="section-hint">Quantidade e receita perdida por motivo, em cada equipe</div></div>
+    ${gerentesComPerda.length ? `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(430px, 1fr)); gap:16px; margin-bottom:16px;">
+      ${gerentesComPerda.map(g=>{
+        const info = porGerente[g];
+        const semMotivoQtd = info.motivos['Motivo não informado']?.qtd || 0;
+        const linhas = Object.entries(info.motivos).filter(([m])=>m!=='Motivo não informado').sort((a,b)=>b[1].qtd-a[1].qtd);
+        const totalQtd = linhas.reduce((s,[,m])=>s+m.qtd,0);
+        const totalValor = linhas.reduce((s,[,m])=>s+m.valor,0);
+        const totalQtdComSemInfo = totalQtd + semMotivoQtd;
+        const top = linhas[0];
+        const topPct = totalQtd && top ? (top[1].qtd/totalQtd*100) : 0;
+        return `
+        <div class="card" style="padding:18px 20px;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+            <span style="color:var(--green-500);">${ICONS.sparkle}</span>
+            <div style="font-family:var(--font-display); font-weight:800; font-size:14.5px; color:var(--gray-900);">${escapeHtml(g)}${info.regiao && info.regiao!=='Não mapeado' ? ` — ${regiaoAbrev(info.regiao)}` : ''}</div>
+          </div>
+          ${linhas.length ? `
+          <div class="table-wrap" style="border:none;">
+            <table>
+              <thead><tr><th>Motivo da Perda</th><th>Quantidade</th><th>R$ Perdido</th></tr></thead>
+              <tbody>
+                ${linhas.map(([motivo,m])=>`
+                  <tr><td>${escapeHtml(motivo)}</td><td class="mono-num">${fmtNum(m.qtd)}</td><td class="mono-num">${fmtMoneyFull(m.valor)}</td></tr>`).join('')}
+                <tr style="background:var(--green-500); color:#fff; font-weight:800;">
+                  <td style="color:#fff;">Total</td><td class="mono-num" style="color:#fff;">${fmtNum(totalQtd)}</td><td class="mono-num" style="color:#fff;">${fmtMoneyFull(totalValor)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>` : `<div class="section-hint">Todas as perdas desta equipe estão sem motivo informado.</div>`}
+          <div style="margin-top:12px; font-size:12.5px; color:var(--gray-700);">
+            <strong style="color:var(--green-700); font-family:var(--font-display); font-size:14px;">${fmtNum(totalQtdComSemInfo)}</strong> propostas perdidas no período filtrado${semMotivoQtd?` <span style="color:var(--gray-500);">(${fmtNum(semMotivoQtd)} sem motivo informado)</span>`:''}<br>
+            ${top ? `<span style="color:var(--gray-500);">${fmtPct(topPct)} das perdas com motivo conhecido foram por "${escapeHtml(top[0])}"</span>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
 
     <div class="card">
       <div class="card-head"><div><div class="card-title">Todas as propostas em estágio de saída</div></div></div>
@@ -2396,6 +2455,7 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
