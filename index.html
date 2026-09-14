@@ -483,6 +483,7 @@ const ICONS = {
 
 
 
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -2139,23 +2140,33 @@ function revisarRowsHtml(rows){
     </tr>`).join('');
 }
 
-let revisarDeselecionados = new Set(); // tipos de pendência desmarcados pelo usuário (tudo marcado por padrão)
+let revisarSubTab = 'aberto'; // 'aberto' | 'perdidas'
+let revisarDeselecionados = { aberto: new Set(), perdidas: new Set() }; // tipos de pendência desmarcados, por aba
 
 function renderRevisarView(fd){
   const todasComIssues = fd.filter(d=>d.estagio!=='Conquistado').map(d=>({...d, __issues: computeIssues(d)})).filter(d=>d.__issues.length>0);
+  const abertosBase = todasComIssues.filter(d=>!curExitStages().includes(d.estagio));
+  const perdidasBase = todasComIssues.filter(d=>curExitStages().includes(d.estagio));
+  const baseAtual = revisarSubTab==='perdidas' ? perdidasBase : abertosBase;
+  const deselAtual = revisarDeselecionados[revisarSubTab];
 
   const contagemPorTipo = {};
-  todasComIssues.forEach(d=>d.__issues.forEach(i=>{ contagemPorTipo[i]=(contagemPorTipo[i]||0)+1; }));
+  baseAtual.forEach(d=>d.__issues.forEach(i=>{ contagemPorTipo[i]=(contagemPorTipo[i]||0)+1; }));
   const tipos = Object.entries(contagemPorTipo).sort((a,b)=>b[1]-a[1]).map(([tipo])=>tipo);
 
   // esquece seleções de tipos que não existem mais (ex: trocou de operação/filtro)
-  revisarDeselecionados.forEach(t=>{ if (!tipos.includes(t)) revisarDeselecionados.delete(t); });
+  deselAtual.forEach(t=>{ if (!tipos.includes(t)) deselAtual.delete(t); });
 
-  const selecionados = tipos.filter(t=>!revisarDeselecionados.has(t));
-  const withIssues = todasComIssues.filter(d=>d.__issues.some(i=>selecionados.includes(i)));
+  const selecionados = tipos.filter(t=>!deselAtual.has(t));
+  const withIssues = baseAtual.filter(d=>d.__issues.some(i=>selecionados.includes(i)));
 
   const vc = document.getElementById('viewContainer');
   vc.innerHTML = `
+    <div class="seg-control" id="revisarSubTabToggle" style="display:inline-flex; margin-bottom:16px;">
+      <button type="button" class="seg-btn ${revisarSubTab==='aberto'?'active':''}" data-tab="aberto">Em aberto · ${fmtNum(abertosBase.length)}</button>
+      <button type="button" class="seg-btn ${revisarSubTab==='perdidas'?'active':''}" data-tab="perdidas">Perdidas · ${fmtNum(perdidasBase.length)}</button>
+    </div>
+
     <div class="stat-mini-row">
       <div class="stat-mini"><div class="stat-mini-label">Oportunidades a revisar</div><div class="stat-mini-value">${fmtNum(withIssues.length)}</div></div>
       <div class="stat-mini"><div class="stat-mini-label">% do total filtrado</div><div class="stat-mini-value">${fmtPct(fd.length?withIssues.length/fd.length*100:0)}</div></div>
@@ -2174,10 +2185,10 @@ function renderRevisarView(fd){
       <div style="display:flex; flex-wrap:wrap; gap:10px;">
         ${tipos.map(tipo => `
           <label style="display:flex; align-items:center; gap:7px; background:var(--gray-100); border-radius:9px; padding:7px 13px; font-size:12.5px; font-weight:600; color:var(--gray-700); cursor:pointer;">
-            <input type="checkbox" class="revisar-tipo-chk" value="${escapeHtml(tipo)}" ${revisarDeselecionados.has(tipo)?'':'checked'}>
+            <input type="checkbox" class="revisar-tipo-chk" value="${escapeHtml(tipo)}" ${deselAtual.has(tipo)?'':'checked'}>
             ${escapeHtml(tipo)} · ${fmtNum(contagemPorTipo[tipo])}
           </label>`).join('')}
-      </div>` : `<span class="section-hint">Nenhuma pendência encontrada.</span>`}
+      </div>` : `<span class="section-hint">Nenhuma pendência encontrada nesta aba.</span>`}
     </div>
 
     <div class="card">
@@ -2201,17 +2212,25 @@ function renderRevisarView(fd){
   }
   makeColumnsResizable(vc);
 
+  vc.querySelectorAll('#revisarSubTabToggle .seg-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      if (revisarSubTab === btn.dataset.tab) return;
+      revisarSubTab = btn.dataset.tab;
+      renderRevisarView(fd);
+    });
+  });
+
   vc.querySelectorAll('.revisar-tipo-chk').forEach(chk=>{
     chk.addEventListener('change', ()=>{
-      if (chk.checked) revisarDeselecionados.delete(chk.value);
-      else revisarDeselecionados.add(chk.value);
+      if (chk.checked) deselAtual.delete(chk.value);
+      else deselAtual.add(chk.value);
       renderRevisarView(fd);
     });
   });
   const selAllBtn = document.getElementById('revisarSelAll');
   const selNoneBtn = document.getElementById('revisarSelNone');
-  if (selAllBtn) selAllBtn.addEventListener('click', ()=>{ revisarDeselecionados.clear(); renderRevisarView(fd); });
-  if (selNoneBtn) selNoneBtn.addEventListener('click', ()=>{ tipos.forEach(t=>revisarDeselecionados.add(t)); renderRevisarView(fd); });
+  if (selAllBtn) selAllBtn.addEventListener('click', ()=>{ deselAtual.clear(); renderRevisarView(fd); });
+  if (selNoneBtn) selNoneBtn.addEventListener('click', ()=>{ tipos.forEach(t=>deselAtual.add(t)); renderRevisarView(fd); });
 }
 
 /* =====================================================================
@@ -2455,6 +2474,7 @@ function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
