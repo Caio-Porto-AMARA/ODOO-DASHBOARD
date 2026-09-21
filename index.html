@@ -487,6 +487,7 @@ const ICONS = {
 
 
 
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -549,16 +550,44 @@ const stageLabel = (raw) => raw; // os nomes já vêm prontos do CRM em ambas as
 
 
 const VENDOR_MANAGER_MAP = {
-  'Arielson Santana': { coordenador: 'Jiomar', gerente: 'Thiago', regiao: 'Norte/Nordeste' },
-  'Maiane Matos Melo': { coordenador: 'Jiomar', gerente: 'Thiago', regiao: 'Norte/Nordeste' },
-  'Elma Edlla': { coordenador: 'Jiomar', gerente: 'Thiago', regiao: 'Norte/Nordeste' },
-  'Thamires Fernanda Soares': { coordenador: 'Jiomar', gerente: 'Thiago', regiao: 'Norte/Nordeste' },
-  'Bruna Aparecida Dos Santos Batista': { coordenador: 'Mariana', gerente: 'Maria', regiao: 'Sul/Sudeste/Centro-Oeste' },
-  'Jordana Baiao': { coordenador: 'Jiomar', gerente: 'Thiago', regiao: 'Norte/Nordeste' },
-  'Rafaela Fernandes Ferreira': { coordenador: 'Mariana', gerente: 'Maria', regiao: 'Sul/Sudeste/Centro-Oeste' },
-  'Luana Elizabett De Santan': { coordenador: 'Jiomar', gerente: 'Thiago', regiao: 'Norte/Nordeste' },
-  'Aline Mieko Miyashiro Higa Dos Santos': { coordenador: 'Mariana', gerente: 'Maria', regiao: 'Sul/Sudeste/Centro-Oeste' },
-  'Liandra Lopes De Sousa': { coordenador: 'Mariana', gerente: 'Maria', regiao: 'Sul/Sudeste/Centro-Oeste' },
+  // Ingrid Lima
+  'Vanessa Vieira De Carvalho': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Andressa Clicia De Jesus Silva': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Luana Castilho Ribeiro': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Marcelo Souza Ferreira Dias': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Rainei Trindade De Souza': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Gabriel Borges Dos Santos': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Rafaela Pereira De Menezes': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Elen Da Cruz Santos': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+  'Kalila Dos Santos Caetano': { coordenador: 'Não informado', gerente: 'Ingrid Lima', regiao: 'Não informado' },
+
+  // Jorge Arruda
+  'Nara Ribeiro Costa Albuquerque Pitanga': { coordenador: 'Não informado', gerente: 'Jorge Arruda', regiao: 'Não informado' },
+  'Nara Pitanga': { coordenador: 'Não informado', gerente: 'Jorge Arruda', regiao: 'Não informado' }, // variante curta usada no CRM
+  'Luana Santana Damasceno': { coordenador: 'Não informado', gerente: 'Jorge Arruda', regiao: 'Não informado' },
+  'Luana Damasceno': { coordenador: 'Não informado', gerente: 'Jorge Arruda', regiao: 'Não informado' }, // variante curta usada no CRM
+  'Joyce Santos Oliveira': { coordenador: 'Não informado', gerente: 'Jorge Arruda', regiao: 'Não informado' },
+
+  // Maria Furtado
+  'Bruna Aparecida Dos Santos Batista': { coordenador: 'Não informado', gerente: 'Maria Furtado', regiao: 'Não informado' },
+  'Liandra Lopes De Sousa': { coordenador: 'Não informado', gerente: 'Maria Furtado', regiao: 'Não informado' },
+  'Tiago De Oliveira Jacinto': { coordenador: 'Não informado', gerente: 'Maria Furtado', regiao: 'Não informado' },
+  'Rafaela Fernandes Ferreira': { coordenador: 'Não informado', gerente: 'Maria Furtado', regiao: 'Não informado' },
+  'Luis Henrique Ferreira Sant Anna Filho': { coordenador: 'Não informado', gerente: 'Maria Furtado', regiao: 'Não informado' },
+  'Aline Mieko Miyashiro Higa Dos Santos': { coordenador: 'Não informado', gerente: 'Maria Furtado', regiao: 'Não informado' },
+  'Bruno Felipe Oliveira De Jesus': { coordenador: 'Não informado', gerente: 'Maria Furtado', regiao: 'Não informado' },
+
+  // Thiago Franklin
+  'Maiane Matos Melo': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' },
+  'Maiane Matos': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' }, // variante curta usada no CRM
+  'Jordana Baiao': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' },
+  'Elma Edlla': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' },
+  'Thamires Fernanda Soares De Santana': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' },
+  'Thamires Fernanda Soares': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' }, // variante curta usada no CRM
+  'Luana Elizabett De Santana Sobrinho': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' },
+  'Luana Elizabett De Santana': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' }, // variante curta usada no CRM
+  'Luana Elizabett De Santan': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' }, // variante truncada já vista no CRM
+  'Arielson Santana': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' },
 };
 function managerInfo(vendedor){
   return VENDOR_MANAGER_MAP[vendedor] || { coordenador: 'Não mapeado', gerente: 'Não mapeado', regiao: 'Não mapeado' };
@@ -2040,7 +2069,7 @@ function renderPerdasView(fd){
         <div class="card" style="padding:18px 20px;">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
             <span style="color:var(--green-500);">${ICONS.sparkle}</span>
-            <div style="font-family:var(--font-display); font-weight:800; font-size:14.5px; color:var(--gray-900);">${escapeHtml(g)}${info.regiao && info.regiao!=='Não mapeado' ? ` — ${regiaoAbrev(info.regiao)}` : ''}</div>
+            <div style="font-family:var(--font-display); font-weight:800; font-size:14.5px; color:var(--gray-900);">${escapeHtml(g)}${info.regiao && !['Não mapeado','Não informado'].includes(info.regiao) ? ` — ${regiaoAbrev(info.regiao)}` : ''}</div>
           </div>
           ${linhas.length ? `
           <div class="table-wrap" style="border:none;">
@@ -2466,6 +2495,7 @@ async function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
