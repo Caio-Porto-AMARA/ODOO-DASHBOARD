@@ -488,6 +488,7 @@ const ICONS = {
 
 
 
+
 /* =====================================================================
    AMARANZERO — Dashboard Comercial de Propostas
    Vanilla JS SPA + Chart.js. Dados tratados a partir do export do CRM.
@@ -589,7 +590,12 @@ const VENDOR_MANAGER_MAP = {
   'Luana Elizabett De Santan': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' }, // variante truncada já vista no CRM
   'Arielson Santana': { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' },
 };
-function managerInfo(vendedor){
+function managerInfo(vendedor, operacao){
+  // Caso especial: Bruno atua nos dois times — Thiago Franklin quando a proposta é BESS,
+  // Maria Furtado quando é Solar (o resto do mapeamento não depende da operação).
+  if (vendedor === 'Bruno Felipe Oliveira De Jesus' && operacao === 'BESS'){
+    return { coordenador: 'Não informado', gerente: 'Thiago Franklin', regiao: 'Não informado' };
+  }
   return VENDOR_MANAGER_MAP[vendedor] || { coordenador: 'Não mapeado', gerente: 'Não mapeado', regiao: 'Não mapeado' };
 }
 
@@ -604,7 +610,7 @@ function buildCleanData(rawRecords){
     empresa: d.empresa || 'Não identificado',
     motivoPerda: d.motivoPerda || null,
     operacao: d.operacao || 'Solar',
-    ...managerInfo(d.vendedor),
+    ...managerInfo(d.vendedor, d.operacao),
   }));
 }
 
@@ -2495,6 +2501,7 @@ async function initApp(){
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 
 
 
